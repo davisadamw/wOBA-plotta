@@ -108,24 +108,25 @@ yasmani_components <- yasmani_stats_prepped %>%
               denom_year = sum(denom_component),
               wOBA_year  = sum(numer_component) / denom_year) %>% 
   mutate(wOBA_component = numer_component / denom_year) %>% 
-  select(all_of(identifier_cols), total, wOBA_component, wOBA_year, numer_component, denom_component, denom_year)
+  select(all_of(identifier_cols), stat, total, 
+         wOBA_component, wOBA_year, numer_component, denom_component, denom_year)
 
 yasmani_components
-#> # A tibble: 80 x 11
-#>     Year   Age Tm    Lg        G total wOBA_component wOBA_year numer_component
-#>    <dbl> <dbl> <chr> <chr> <dbl> <dbl>          <dbl>     <dbl>           <dbl>
-#>  1  2012    23 SDP   NL       60    30        0.092       0.379           20.7 
-#>  2  2012    23 SDP   NL       60     1        0.0032      0.379            0.72
-#>  3  2012    23 SDP   NL       60     2        0           0.379            0   
-#>  4  2012    23 SDP   NL       60   192        0           0.379            0   
-#>  5  2012    23 SDP   NL       60    41        0.162       0.379           36.5 
-#>  6  2012    23 SDP   NL       60     7        0.0395      0.379            8.89
-#>  7  2012    23 SDP   NL       60     1        0.0072      0.379            1.62
-#>  8  2012    23 SDP   NL       60     8        0.0747      0.379           16.8 
-#>  9  2013    24 SDP   NL       28    16        0.104       0.311           11.0 
-#> 10  2013    24 SDP   NL       28     1        0.00679     0.311            0.72
-#> # ... with 70 more rows, and 2 more variables: denom_component <dbl>,
-#> #   denom_year <dbl>
+#> # A tibble: 80 x 12
+#>     Year   Age Tm    Lg        G stat  total wOBA_component wOBA_year
+#>    <dbl> <dbl> <chr> <chr> <dbl> <chr> <dbl>          <dbl>     <dbl>
+#>  1  2012    23 SDP   NL       60 uBB      30        0.092       0.379
+#>  2  2012    23 SDP   NL       60 HBP       1        0.0032      0.379
+#>  3  2012    23 SDP   NL       60 SF        2        0           0.379
+#>  4  2012    23 SDP   NL       60 AB      192        0           0.379
+#>  5  2012    23 SDP   NL       60 1B       41        0.162       0.379
+#>  6  2012    23 SDP   NL       60 2B        7        0.0395      0.379
+#>  7  2012    23 SDP   NL       60 3B        1        0.0072      0.379
+#>  8  2012    23 SDP   NL       60 HR        8        0.0747      0.379
+#>  9  2013    24 SDP   NL       28 uBB      16        0.104       0.311
+#> 10  2013    24 SDP   NL       28 HBP       1        0.00679     0.311
+#> # ... with 70 more rows, and 3 more variables: numer_component <dbl>,
+#> #   denom_component <dbl>, denom_year <dbl>
 ```
 
 # Plotting wOBA components
@@ -157,8 +158,19 @@ wOBA_thresholds <- tribble(
 years <- yasmani_wOBA_only$Year
 comp_color <- "grey40"
 
-yasmani_wOBA_only %>% 
-  ggplot(aes(Year, wOBA)) + 
+# grab a tiny bit of info about his best year
+best_year <- yasmani_wOBA_only %>% 
+  filter(G > 60) %>% 
+  slice_max(wOBA, n = 1) %>% 
+  mutate(wOBA_format = scales::number(wOBA, accuracy = 0.001),
+         by_lab = glue::glue("Career best: {wOBA_format}\nin {Year} with {Tm}"))
+
+wOBA_plot_basics <- ggplot(mapping = aes(x = Year, wOBA)) +
+  scale_x_continuous(breaks = years, minor_breaks = NULL) +
+  theme_bw() +
+  theme(panel.grid = element_blank())
+
+wOBA_plot_basics +
   geom_hline(aes(yintercept = wOBA), 
              data = wOBA_thresholds, 
              color = comp_color) +
@@ -167,16 +179,37 @@ yasmani_wOBA_only %>%
             x = max(years) + 1, 
             nudge_y = 0.003,
             color = comp_color) +
-  geom_line() +
-  geom_point() +
+  geom_line(data = yasmani_wOBA_only) +
+  geom_point(data = yasmani_wOBA_only) +
+  geom_text(aes(label = by_lab), data = best_year, nudge_y = 0.01) +
+  scale_y_continuous("wOBA", breaks = wOBA_thresholds$wOBA,
+                     labels = scales::label_number(accuracy = 0.001)) +
   expand_limits(x = max(years + 1.5)) +
-  scale_x_continuous(breaks = years, minor_breaks = NULL) +
-  scale_y_continuous(breaks = seq(0, 1, 0.02),
-                     labels = scales::label_number()) +
-  theme_bw()
+  ggtitle("Yasmani Grandal wOBA")
 ```
 
 ![](README_files/figure-gfm/wOBA%20plot-1.png)<!-- -->
 
 Then a first attempt to plot the impact that each hitting outcome had
 each year.
+
+``` r
+# only want the stats that positively contribute to wOBA, make it a factor
+yasmani_components_forplot <- yasmani_components %>% 
+  semi_join(filter(wOBA_numer_weights, numer_weight > 0), by = "stat") %>% 
+  mutate(stat_ord = fct_relevel(stat, "uBB", "HBP", "1B", "2B", "3B", "HR")) %>% 
+  rename(wOBA = wOBA_component)
+
+colors <- c("#7570b3", "#d95f02", "#ffffcc", "#a1dab4", "#41b6c4", "#225ea8")
+
+wOBA_plot_basics +
+  geom_bar(aes(fill = stat_ord),
+           data = yasmani_components_forplot,
+           stat = "identity", position = "stack") +
+  scale_y_continuous("wOBA", breaks = seq(0, 0.6, by = 0.05),
+                     labels = scales::label_number(accuracy = 0.001)) +
+  scale_fill_manual("Component", values = colors) +
+  ggtitle("Yasmani Grandal wOBA Components")
+```
+
+![](README_files/figure-gfm/components%20plot-1.png)<!-- -->
