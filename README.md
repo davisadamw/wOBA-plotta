@@ -7,6 +7,10 @@ but How Is He Making It
 Work?”](https://www.si.com/mlb/2021/06/02/yasmani-grandal-the-opener).
 Here’s my attempt to visualize Yasmani Grandal’s absurd 2021 stat line.
 
+This readme contains all of the analysis and functions to automate the
+data prep and wOBA component calculation steps can be found in
+99\_woba-functions.R
+
 # Load the stats
 
 We’re going to grab Yasmani Grandal’s stats from baseball-reference. You
@@ -74,22 +78,6 @@ yasmani_stats_prepped <- yasmani_stats %>%
   # we only want to keep columns that matter for wOBA calculation plus a few identifiers
   select(all_of(identifier_cols), all_of(weight_cols)) %>% 
   pivot_longer(all_of(weight_cols), names_to = "stat", values_to = "total")
-
-yasmani_stats_prepped
-#> # A tibble: 80 x 7
-#>     Year   Age Tm    Lg        G stat  total
-#>    <dbl> <dbl> <chr> <chr> <dbl> <chr> <dbl>
-#>  1  2012    23 SDP   NL       60 uBB      30
-#>  2  2012    23 SDP   NL       60 HBP       1
-#>  3  2012    23 SDP   NL       60 SF        2
-#>  4  2012    23 SDP   NL       60 AB      192
-#>  5  2012    23 SDP   NL       60 1B       41
-#>  6  2012    23 SDP   NL       60 2B        7
-#>  7  2012    23 SDP   NL       60 3B        1
-#>  8  2012    23 SDP   NL       60 HR        8
-#>  9  2013    24 SDP   NL       28 uBB      16
-#> 10  2013    24 SDP   NL       28 HBP       1
-#> # ... with 70 more rows
 ```
 
 Once we’ve got the data in the right format, we can compute the
@@ -110,23 +98,6 @@ yasmani_components <- yasmani_stats_prepped %>%
   mutate(wOBA_component = numer_component / denom_year) %>% 
   select(all_of(identifier_cols), stat, total, 
          wOBA_component, wOBA_year, numer_component, denom_component, denom_year)
-
-yasmani_components
-#> # A tibble: 80 x 12
-#>     Year   Age Tm    Lg        G stat  total wOBA_component wOBA_year
-#>    <dbl> <dbl> <chr> <chr> <dbl> <chr> <dbl>          <dbl>     <dbl>
-#>  1  2012    23 SDP   NL       60 uBB      30        0.092       0.379
-#>  2  2012    23 SDP   NL       60 HBP       1        0.0032      0.379
-#>  3  2012    23 SDP   NL       60 SF        2        0           0.379
-#>  4  2012    23 SDP   NL       60 AB      192        0           0.379
-#>  5  2012    23 SDP   NL       60 1B       41        0.162       0.379
-#>  6  2012    23 SDP   NL       60 2B        7        0.0395      0.379
-#>  7  2012    23 SDP   NL       60 3B        1        0.0072      0.379
-#>  8  2012    23 SDP   NL       60 HR        8        0.0747      0.379
-#>  9  2013    24 SDP   NL       28 uBB      16        0.104       0.311
-#> 10  2013    24 SDP   NL       28 HBP       1        0.00679     0.311
-#> # ... with 70 more rows, and 3 more variables: numer_component <dbl>,
-#> #   denom_component <dbl>, denom_year <dbl>
 ```
 
 # Plotting wOBA components
@@ -134,82 +105,7 @@ yasmani_components
 First, a quick plot of Yasmani Grandal’s wOBA over the years against
 some thresholds from [FanGraph’s
 glossary](https://library.fangraphs.com/offense/woba/):
-
-``` r
-yasmani_wOBA_only <- yasmani_components %>% 
-  with_groups(all_of(identifier_cols), summarize,
-              numer = sum(numer_component),
-              denom = sum(denom_component)) %>% 
-  mutate(wOBA = numer / denom, .keep = "unused")
-
-
-# a few other things
-wOBA_thresholds <- tribble(
-  ~Rating,         ~wOBA,
-  "Excellent",     .400,
-  "Great",         .370,
-  "Above Average", .340,
-  "Average",       .320,
-  "Below Average", .310,
-  "Poor",          .300,
-  "Awful",         .290
-)
-
-years <- yasmani_wOBA_only$Year
-comp_color <- "grey40"
-
-# grab a tiny bit of info about his best year
-best_year <- yasmani_wOBA_only %>% 
-  filter(G > 60) %>% 
-  slice_max(wOBA, n = 1) %>% 
-  mutate(wOBA_format = scales::number(wOBA, accuracy = 0.001),
-         by_lab = glue::glue("Career best: {wOBA_format}\nin {Year} with {Tm}"))
-
-wOBA_plot_basics <- ggplot(mapping = aes(x = Year, wOBA)) +
-  scale_x_continuous(breaks = years, minor_breaks = NULL) +
-  theme_bw() +
-  theme(panel.grid = element_blank())
-
-wOBA_plot_basics +
-  geom_hline(aes(yintercept = wOBA), 
-             data = wOBA_thresholds, 
-             color = comp_color) +
-  geom_text(aes(label = Rating), 
-            data = wOBA_thresholds, 
-            x = max(years) + 1, 
-            nudge_y = 0.003,
-            color = comp_color) +
-  geom_line(data = yasmani_wOBA_only) +
-  geom_point(data = yasmani_wOBA_only) +
-  geom_text(aes(label = by_lab), data = best_year, nudge_y = 0.01) +
-  scale_y_continuous("wOBA", breaks = wOBA_thresholds$wOBA,
-                     labels = scales::label_number(accuracy = 0.001)) +
-  expand_limits(x = max(years + 1.5)) +
-  ggtitle("Yasmani Grandal wOBA")
-```
-
 ![](README_files/figure-gfm/wOBA%20plot-1.png)<!-- -->
 
 Then a first attempt to plot the impact that each hitting outcome had
-each year.
-
-``` r
-# only want the stats that positively contribute to wOBA, make it a factor
-yasmani_components_forplot <- yasmani_components %>% 
-  semi_join(filter(wOBA_numer_weights, numer_weight > 0), by = "stat") %>% 
-  mutate(stat_ord = fct_relevel(stat, "uBB", "HBP", "1B", "2B", "3B", "HR")) %>% 
-  rename(wOBA = wOBA_component)
-
-colors <- c("#7570b3", "#d95f02", "#ffffcc", "#a1dab4", "#41b6c4", "#225ea8")
-
-wOBA_plot_basics +
-  geom_bar(aes(fill = stat_ord),
-           data = yasmani_components_forplot,
-           stat = "identity", position = "stack") +
-  scale_y_continuous("wOBA", breaks = seq(0, 0.6, by = 0.05),
-                     labels = scales::label_number(accuracy = 0.001)) +
-  scale_fill_manual("Component", values = colors) +
-  ggtitle("Yasmani Grandal wOBA Components")
-```
-
-![](README_files/figure-gfm/components%20plot-1.png)<!-- -->
+each year. ![](README_files/figure-gfm/components%20plot-1.png)<!-- -->

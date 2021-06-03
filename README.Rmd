@@ -6,6 +6,8 @@ output: github_document
 
 Inspired by [Emma Baccellieri's](https://twitter.com/emmabaccellieri) article ["White Sox' Yasmani Grandal Is Doing the Most With the Least but How Is He Making It Work?"](https://www.si.com/mlb/2021/06/02/yasmani-grandal-the-opener). Here's my attempt to visualize Yasmani Grandal's absurd 2021 stat line.
 
+This readme contains all of the analysis and functions to automate the data prep and wOBA component calculation steps can be found in 99_woba-functions.R
+
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
@@ -69,7 +71,6 @@ yasmani_stats_prepped <- yasmani_stats %>%
   select(all_of(identifier_cols), all_of(weight_cols)) %>% 
   pivot_longer(all_of(weight_cols), names_to = "stat", values_to = "total")
 
-yasmani_stats_prepped
 ```
 
 Once we've got the data in the right format, we can compute the numerator and denominator components of each stat, each stat's contribution to the overall wOBA, and overall value of wOBA itself.
@@ -88,13 +89,12 @@ yasmani_components <- yasmani_stats_prepped %>%
   select(all_of(identifier_cols), stat, total, 
          wOBA_component, wOBA_year, numer_component, denom_component, denom_year)
 
-yasmani_components
 ```
 
 # Plotting wOBA components
 
 First, a quick plot of Yasmani Grandal's wOBA over the years against some thresholds from [FanGraph's glossary](https://library.fangraphs.com/offense/woba/):
-```{r wOBA plot}
+```{r wOBA plot, echo=FALSE}
 yasmani_wOBA_only <- yasmani_components %>% 
   with_groups(all_of(identifier_cols), summarize,
               numer = sum(numer_component),
@@ -148,7 +148,7 @@ wOBA_plot_basics +
 ```
 
 Then a first attempt to plot the impact that each hitting outcome had each year.
-```{r components plot}
+```{r components plot, echo=FALSE}
 
 # only want the stats that positively contribute to wOBA, make it a factor
 yasmani_components_forplot <- yasmani_components %>% 
@@ -165,6 +165,7 @@ wOBA_plot_basics +
   scale_y_continuous("wOBA", breaks = seq(0, 0.6, by = 0.05),
                      labels = scales::label_number(accuracy = 0.001)) +
   scale_fill_manual("Component", values = colors) +
-  ggtitle("Yasmani Grandal wOBA Components")
+  ggtitle("Yasmani Grandal wOBA Components",
+          subtitle = "In 2021, Grandal has walked enough to replace almost all value from non-HR hits")
 ```
 
